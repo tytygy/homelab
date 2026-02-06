@@ -1,0 +1,145 @@
+version: '3.8'
+
+networks:
+  homelab:
+    driver: bridge
+
+volumes:
+  portainer_data:
+  gitea_data:
+  navidrome_data:
+  jellyfin_config:
+  uptime_kuma_data:
+
+services:
+  # 1. Portainer - Docker management UI
+  portainer:
+    image: portainer/portainer-ce:2.21.4
+    container_name: portainer
+    restart: unless-stopped
+    networks:
+      - homelab
+    ports:
+      - "9000:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    environment:
+      - TZ=${TZ}
+
+  # 2. Gitea - Self-hosted Git service
+  gitea:
+    image: gitea/gitea:1.22.6
+    container_name: gitea
+    restart: unless-stopped
+    networks:
+      - homelab
+    ports:
+      - "3000:3000"
+      - "2222:22"
+    volumes:
+      - gitea_data:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      - GITEA__database__DB_TYPE=sqlite3
+      - GITEA__server__DOMAIN=${VPS_IP}
+      - GITEA__server__SSH_DOMAIN=${VPS_IP}
+      - GITEA__server__ROOT_URL=http://${VPS_IP}:3000/
+
+  # 3. Code Server - VS Code in browser
+  code-server:
+    image: codercom/code-server:latest
+    container_name: code-server
+    restart: unless-stopped
+    networks:
+      - homelab
+    ports:
+      - "8443:8080"
+    volumes:
+      - ./workspace:/home/coder/workspace
+      - ./config/code-server:/home/coder/.config
+    environment:
+      - TZ=${TZ}
+      - PASSWORD=${CODE_SERVER_PASSWORD}
+      - SUDO_PASSWORD=${CODE_SERVER_PASSWORD}
+
+  # 4. Navidrome - Music streaming server
+  navidrome:
+    image: deluan/navidrome:0.54.5
+    container_name: navidrome
+    restart: unless-stopped
+    networks:
+      - homelab
+    ports:
+      - "4533:4533"
+    volumes:
+      - navidrome_data:/data
+      - ./media/music:/music:ro
+    environment:
+      - ND_LOGLEVEL=info
+      - ND_BASEURL=
+      - ND_SCANSCHEDULE=1h
+      - ND_SESSIONTIMEOUT=24h
+
+  # 5. Jellyfin - Media server for video
+  jellyfin:
+    image: jellyfin/jellyfin:10.10.3
+    container_name: jellyfin
+    restart: unless-stopped
+    networks:
+      - homelab
+    ports:
+      - "8096:8096"
+    volumes:
+      - jellyfin_config:/config
+      - ./media/videos:/media/videos
+    environment:
+      - TZ=${TZ}
+
+  # 6. Filebrowser - Web file manager
+  filebrowser:
+    image: filebrowser/filebrowser:v2.31.2
+    container_name: filebrowser
+    restart: unless-stopped
+    networks:
+      - homelab
+    ports:
+      - "8085:80"
+    volumes:
+      - ./media:/srv
+      - ./config/filebrowser/filebrowser.db:/database/filebrowser.db
+      - ./config/filebrowser/settings.json:/config/settings.json
+    environment:
+      - TZ=${TZ}
+
+  # 7. Uptime Kuma - Service monitoring
+  uptime-kuma:
+    image: louislam/uptime-kuma:1.23.15
+    container_name: uptime-kuma
+    restart: unless-stopped
+    networks:
+      - homelab
+    ports:
+      - "3001:3001"
+    volumes:
+      - uptime_kuma_data:/app/data
+    environment:
+      - TZ=${TZ}
+
+  # 8. Watchtower - Auto-update containers
+  watchtower:
+    image: containrrr/watchtower:1.7.1
+    container_name: watchtower
+    restart: unless-stopped
+    networks:
+      - homelab
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - TZ=${TZ}
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=86400
+      - WATCHTOWER_INCLUDE_RESTARTING=true
